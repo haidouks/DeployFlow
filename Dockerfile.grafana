@@ -1,0 +1,4 @@
+FROM grafana/grafana
+COPY monitoring/grafana-datasource.yml /etc/grafana/provisioning/datasources/prometheus.yml
+COPY monitoring/grafana-dashboard.yml /etc/grafana/provisioning/dashboards/main.yaml
+COPY monitoring/dashboards /var/lib/grafana/dashboards

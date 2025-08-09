@@ -1,0 +1,4 @@
+FROM ghcr.io/danyi1212/celery-insights-all:latest
+RUN pip install --no-cache-dir sqlalchemy psycopg2-binary
+WORKDIR /app
+COPY insights/* .

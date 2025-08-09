@@ -1,0 +1,13 @@
+FROM python:3
+
+WORKDIR /usr/src/app
+
+COPY requirements.local.txt ./
+RUN pip install --default-timeout=1000 --no-cache-dir -r requirements.local.txt
+ADD workflows /usr/src/app/workflows
+ADD lib /usr/src/app/lib
+ENV CELERY_WORKER_LOG_LEVEL=info
+ENV CELERY_WORKER_POOL=threads
+ENV CELERY_WORKER_CONCURENCY=50
+ENV CELERY_WORKER_QUEUE=default
+CMD celery -A workflows.celery_worker worker -l $CELERY_WORKER_LOG_LEVEL --pool=$CELERY_WORKER_POOL --concurrency=$CELERY_WORKER_CONCURENCY -Q $CELERY_WORKER_QUEUE

@@ -1,0 +1,226 @@
+version: '3.1'
+services:
+  api:
+    build: 
+      context: ./
+      dockerfile: Dockerfile.api    
+    ports:
+    - '8000:8080'
+    restart: always
+    environment:
+    - WEB_CONCURRENCY=5
+    - CELERY_BROKER_URL=amqp://rabbitmq:5672
+    - CELERY_RESULT_BACKEND=db+postgresql://user:password@postgresql:5432/deployflow
+    - ENABLE_REQUEST_RECORD=${ENABLE_REQUEST_RECORD}
+    - ENABLE_REQUEST_RECORD_MONITORING_HEALTHCHECK=${ENABLE_REQUEST_RECORD_MONITORING_HEALTHCHECK}
+    - LOG_LEVEL_MONITORING_HEALTHCHECK=10
+    - LOG_LEVEL_V1_ROUTE_HANDLERS=${LOG_LEVEL_V1_ROUTE_HANDLERS}
+    - MINIO_ENDPOINT=minio-1:9000
+    - MINIO_ACCESS_KEY=your_actual_access_key
+    - MINIO_SECRET_KEY=your_actual_secret_key
+    depends_on:
+      - rabbitmq
+      - flower
+      - postgresql
+      - minio-1
+  prometheus:
+    build: 
+      context: ./
+      dockerfile: Dockerfile.prometheus
+    ports:
+      - 9090:9090
+  grafana:
+    build: 
+      context: ./
+      dockerfile: Dockerfile.grafana
+    ports:
+      - 3000:3000
+  rabbitmq:
+    build: 
+      context: ./
+      dockerfile: Dockerfile.rabbitmq
+    healthcheck:
+      test: ["CMD", "curl -v localhost:5672"]
+      interval: 1m30s
+      timeout: 30s
+      retries: 5
+      start_period: 30s
+    ports:
+      - 5672:5672
+      - 15672:15672
+  worker-uploader:
+    build: 
+      context: ./
+      dockerfile: Dockerfile.worker
+    environment:
+    - CELERY_BROKER_URL=amqp://rabbitmq:5672
+    - CELERYD_POOL_RESTARTS=True
+    - CELERY_RESULT_BACKEND=db+postgresql://user:password@postgresql:5432/deployflow
+    - CELERY_WORKER_QUEUE=uploads
+    - MINIO_ENDPOINT=minio-1:9000
+    - MINIO_ACCESS_KEY=your_actual_access_key  # Replace with your MinIO root user
+    - MINIO_SECRET_KEY=your_actual_secret_key
+    depends_on:
+      - rabbitmq
+      - postgresql
+  worker-validations:
+    build: 
+      context: ./
+      dockerfile: Dockerfile.worker
+    environment:
+    - CELERY_BROKER_URL=amqp://rabbitmq:5672
+    - CELERY_WORKER_QUEUE=validations
+    - CELERYD_POOL_RESTARTS=True
+    - CELERY_RESULT_BACKEND=db+postgresql://user:password@postgresql:5432/deployflow
+    - MAX_CONTENT_SIZE=1048576 # 1 MB
+    depends_on:
+      - rabbitmq
+      - postgresql
+  insights:
+    build: 
+      context: ./
+      dockerfile: Dockerfile.insights
+    ports:
+      - 8555:8080
+    environment:
+      - BROKER_URL=amqp://rabbitmq:5672
+      - RESULT_BACKEND=db+postgresql://user:password@postgresql:5432/deployflow
+      - FLOWER_UNAUTHENTICATED_API=true
+      - PORT=8080
+    depends_on:
+      - postgresql
+      - rabbitmq
+  flower:
+    build: 
+      context: ./
+      dockerfile: Dockerfile.flower
+    command: celery -A workflows.celery_worker flower -l info --port=8080
+    ports:
+      - 5555:8080
+    environment:
+      - CELERY_BROKER_URL=amqp://rabbitmq:5672
+      - FLOWER_BROKER_API=http://guest:guest@rabbitmq:15672/api/
+      - CELERY_RESULT_BACKEND=db+postgresql://user:password@postgresql:5432/deployflow
+      - FLOWER_UNAUTHENTICATED_API=true
+      - FLOWER_PURGE_OFFLINE_WORKERS=60
+      - FLOWER_BASIC_AUTH=admin:Asd_asd123!
+      - FLOWER_PERSISTENT=True
+      - FLOWER_STATE_SAVE_INTERVAL=30000
+      - FLOWER_DB=/etc/flower_db
+    depends_on:
+      - postgresql
+      - rabbitmq
+  postgresql:
+    build: 
+      context: ./
+      dockerfile: Dockerfile.postgresql
+    #volumes:
+    #  - postgres_data:/var/lib/postgresql/data/
+    environment:
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=deployflow
+    ports:
+      - "5432:5432"
+    user: postgres
+  pgadmin:
+    build: 
+      context: ./
+      dockerfile: Dockerfile.pgadmin
+    ports:
+      - 8081:8081
+    depends_on:
+      - postgresql
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=user@me.com
+      - PGADMIN_DEFAULT_PASSWORD=password
+      - PGADMIN_LISTEN_PORT=8081
+  minio-2:
+    build: 
+      context: ./
+      dockerfile: Dockerfile.minio
+    command: |
+      server --address ":9900" --console-address ":9901" /data
+    ports:
+      - "9900:9900"
+      - "9901:9901"
+    environment:
+      MINIO_ROOT_USER: your_actual_access_key  # Replace with your MinIO root user
+      MINIO_ROOT_PASSWORD: your_actual_secret_key  # Replace with your MinIO root password
+    volumes:
+      - minio_data_2:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9900/minio/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+  minio-1:
+    build: 
+      context: ./
+      dockerfile: Dockerfile.minio
+    command: |
+      server --address ":9000" --console-address ":9001" /data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: your_actual_access_key  # Replace with your MinIO root user
+      MINIO_ROOT_PASSWORD: your_actual_secret_key  # Replace with your MinIO root password
+    volumes:
+      - minio_data_1:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+  nginx-proxy:
+    image: nginx:latest
+    ports:
+      - "8082:80"
+    depends_on:
+      - minio-2
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    environment:
+      - NGINX_HOST=localhost
+      - NGINX_PORT=8082
+  mc:
+    build:
+      context: ./
+      dockerfile: Dockerfile.mc
+    depends_on:
+      minio-1:
+        condition: service_healthy
+      minio-2:
+        condition: service_healthy
+    entrypoint: /bin/bash -c
+    command: >
+      "
+      set -x &&
+      mc alias set minio-1 http://minio-1:9000 your_actual_access_key your_actual_secret_key &&
+      mc alias set minio-2 http://minio-2:9900 your_actual_access_key your_actual_secret_key &&
+      echo 'Creating Buckets' &&
+      (mc mb minio-1/source-bucket || echo 'minio-1/source-bucket already exists') &&
+      (mc mb minio-2/target-bucket || echo 'minio-2/target-bucket already exists') &&
+      (mc version enable minio-1/source-bucket || echo 'Versioning not activated minio-1/source-bucket') &&
+      (mc version enable minio-2/target-bucket || echo 'Versioning not activated minio-2/target-bucket') &&
+      mc admin user add minio-2 replication-user replication-password &&
+      mc admin policy create minio-2 replicate-policy /tmp/replicate.json &&
+      mc admin policy attach minio-2 replicate-policy --user replication-user &&
+      echo 'Checking Replication Rule' &&
+      if mc replicate list minio-1/source-bucket | grep 'target-bucket'; then
+      echo 'Replication rule already exists';
+      else
+        mc replicate add minio-1/source-bucket --remote-bucket minio-2/target-bucket;
+      fi &&
+      echo 'Setting Public Policy' &&
+      mc anonymous set download minio-2/target-bucket
+      "
+
+volumes:
+  minio_data_1:
+  minio_data_2:
+
+#mc admin policy create minio-2 public-policy /tmp/public-policy.json &&
+#      mc replicate list minio-1/source-bucket &&
+     # mc admin policy create minio-2 public-policy /tmp/public-policy.json --priority 2  

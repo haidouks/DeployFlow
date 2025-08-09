@@ -1,0 +1,11 @@
+FROM python:3
+RUN mkdir -p /etc/flower
+WORKDIR /usr/src/app
+
+COPY requirements.local.txt ./
+RUN pip install --default-timeout=1000 --no-cache-dir -r requirements.local.txt
+
+ADD workflows /usr/src/app/workflows
+ADD lib /usr/src/app/lib
+
+CMD celery -A workflows.celery_worker flower -l info --enable-api --port=8080
