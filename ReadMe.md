@@ -63,4 +63,5 @@ Here is an example of how the application works step by step:
 
 6. **Direct Hosting**:   - Once the HTML file is placed in MinIO-1's `source-bucket`, it can be accessed directly through the NGINX proxy without additional steps.
 
-7. **Monitoring and Logging**:   - Throughout the process, tools like Insights, Grafana, Flower, and PGAdmin can be used to monitor metrics and logs
+7. **Monitoring and Logging**:   - Throughout the process, tools like Insights, Grafana, Flower, and PGAdmin can be used to monitor metrics and logs.
+![screenshot](docs/nginx.png)
