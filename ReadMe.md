@@ -14,9 +14,10 @@ The platform is built using Docker and Docker Compose, enabling easy deployment 
 ![screenshot](docs/grafana.png)
 - **Message Queue**: RabbitMQ for reliable message delivery between services.
 - **Object Storage**: 2 MinIO instances for scalable and secure object storage. It replicates files from minio1's **source bucket** to minio2's **target bucket**.
-- **Database**: PostgreSQL for persistent data storage.
+![screenshot](docs/minio.png)
+- **Database**: PostgreSQL for persistent data storage and PG Admin for monitoring and administration.
 - **Dashboard**: Celery Flower dashboard and Celery Insights for monitoring tasks, task queues and workers.
-
+![screenshot](docs/insights.png)
 
 ## Getting Started
 ### Prerequisites
@@ -42,14 +43,24 @@ The platform is built using Docker and Docker Compose, enabling easy deployment 
    - Prometheus: `http://localhost:9090`
    - Flower Dashboard: `http://localhost:5555`
    - Celery Insights: `http://localhost:8555`
+   - Minio 1: `http://localhost:9001`
+   - Minio 2: `http://localhost:9901`
+   - PG Admin: `http://localhost:8081`
 
-## Usage
-- Upload files to MinIO via the `mc` CLI or API.
-- Monitor tasks and workers using the Flower dashboard.
-- Visualize metrics and logs in Grafana and Prometheus.
 
-## Out of Scope
-- Authentication and Authorization of components are out of scopes
-- High availability
-- Pre-Deployment pipeline tasks such as vulnerability, unit tests, code coverages, ...
-- ...
+### Example Scenario
+Here is an example of how the application works step by step:
+
+1. **Start the Workflow**: API is called with the HTML file name, content and bucket details to start the workflow. Tracking id returns to client which can be used to get the status of workflow. 
+
+2. **Validation Tasks**: The file size and HTML format are validated by workers responsible for the `validations` queue.
+
+3. **Upload to MinIO**:   - If no errors occur during validation, the file is uploaded to the `source-bucket` in MinIO-1 by a worker responsible for the `uploads` queue.
+
+4. **Replication to MinIO-2**:   - MinIO-1's `source-bucket` is configured to replicate files to MinIO-2's `target-bucket`.
+
+5. **NGINX Reverse Proxy**:   - MinIO-2's `target-bucket` is exposed via an NGINX reverse proxy, allowing the file to be accessed through a browser.
+
+6. **Direct Hosting**:   - Once the HTML file is placed in MinIO-1's `source-bucket`, it can be accessed directly through the NGINX proxy without additional steps.
+
+7. **Monitoring and Logging**:   - Throughout the process, tools like Insights, Grafana, Flower, and PGAdmin can be used to monitor metrics and logs
